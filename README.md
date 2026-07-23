@@ -67,9 +67,9 @@ plugins = ["nonebot-plugin-aigf"]
 AIGF_CHAT_OPENAI_API_KEY="***"         # LLM API Key
 AIGF_CHAT_OPENAI_BASE_URL="***"  # LLM API 地址
 AIGF_CHAT_OPENAI_MODEL="***"  # LLM 模型名称
+AIGF_ENABLED_GROUPS=[123456, 789012]   # 启用的群号列表
 
 # === 可选 ===
-AIGF_ENABLED_GROUPS=[123456, 789012]   # 启用的群号列表
 AIGF_MEME_ENABLED=true                 # 是否启用表情包功能（默认 true）
 AIGF_MEME_MAX_COUNT=200                # 自动收集的表情包最大数量（默认 200）
 AIGF_DEFAULT_PRESET=default            # 默认预设名称（默认 "default"）
