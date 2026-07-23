@@ -116,35 +116,6 @@ AIGF_VLM_API_KEY="***"                           # VLM API Key（为空时使用
 
 存储在 `<插件数据目录>/memory/friends/<QQ号>.json`，每个群友一个文件，以 QQ 号命名。LLM 记录群友的昵称、职业、爱好、说过的话、与其他群友的关系等。当群友修改昵称时，LLM 可通过 `update_name` 更新。
 
-### 记忆操作格式
-
-LLM 在回复的 JSON 中输出记忆操作：
-
-```json
-{
-  "reply": [...],
-  "memory": {
-    "short_term": {
-      "add": ["新记住的内容"],
-      "modify": [{"index": 0, "content": "修改后的内容"}],
-      "delete": [2]
-    },
-    "long_term": {
-      "add": ["群里组织了一次聚餐"],
-      "delete": [1]
-    },
-    "friends": {
-      "123456": {
-        "add": ["职业：程序员"],
-        "update_name": "新昵称"
-      }
-    }
-  }
-}
-```
-
-所有字段都是可选的，不需要的操作可以省略。
-
 ## 表情包功能
 
 ### 工作原理
