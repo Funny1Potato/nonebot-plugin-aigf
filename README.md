@@ -17,6 +17,7 @@
 ## 📖 介绍
 
 > 基于 [shadow3aaa/nonebot-plugin-nyaturingtest](https://github.com/shadow3aaa/nonebot-plugin-nyaturingtest) 重构，移除了 HippoRAG 和情绪系统，改为 LLM 自主管理记忆，并添加表情包存储和发送功能。
+* 本项目对原项目代码的修改及重构均有AI高度参与，若有做得不够好的地方，请手下留情。
 
 ### 特点:
 
