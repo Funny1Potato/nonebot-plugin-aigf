@@ -70,7 +70,7 @@ class Session:
 
         # LLM 模式：读取缓存图片的 base64
         sticker_images: list[str] = []
-        if plugin_config.nyaturingtest_image_mode == "llm" and cached_stickers:
+        if plugin_config.aigf_image_mode == "llm" and cached_stickers:
             for s in cached_stickers:
                 cache_info = meme_manager._cache_index.get(s["id"])
                 if cache_info:
@@ -85,7 +85,7 @@ class Session:
 
         # 调用 LLM
         response_str = await llm.generate_response(
-            prompt, plugin_config.nyaturingtest_chat_openai_model,
+            prompt, plugin_config.aigf_chat_openai_model,
             images=sticker_images if sticker_images else None,
         )
         if not response_str:
@@ -108,7 +108,7 @@ class Session:
         # 处理表情包保存
         save_meme = result.get("memory", {}).get("save_meme")
 
-        if save_meme and plugin_config.nyaturingtest_meme_enabled:
+        if save_meme and plugin_config.aigf_meme_enabled:
             save_list = save_meme if isinstance(save_meme, list) else [save_meme]
             current_cache = meme_manager.get_cached_stickers()
             current_ids = {s["id"] for s in current_cache}
@@ -155,7 +155,7 @@ class Session:
                       cached_stickers: list[dict] | None = None) -> str:
         # 预设知识
         preset_knowledge = ""
-        preset = PRESETS.get(plugin_config.nyaturingtest_default_preset)
+        preset = PRESETS.get(plugin_config.aigf_default_preset)
         if preset and preset.knowledges:
             preset_knowledge = "\n".join(f"- {k}" for k in preset.knowledges)
 
@@ -183,7 +183,7 @@ class Session:
 
         # 表情包列表
         meme_section = ""
-        if plugin_config.nyaturingtest_meme_enabled:
+        if plugin_config.aigf_meme_enabled:
             meme_list = meme_manager.prompt_list()
             if meme_list:
                 meme_section = f"""
@@ -197,8 +197,8 @@ class Session:
         # 缓存中的表情包（可供收藏）
         sticker_section = ""
 
-        if cached_stickers and plugin_config.nyaturingtest_meme_enabled:
-            if plugin_config.nyaturingtest_image_mode == "llm":
+        if cached_stickers and plugin_config.aigf_meme_enabled:
+            if plugin_config.aigf_image_mode == "llm":
                 # LLM 模式：图片已附在 prompt 中，LLM 直接看图
                 sticker_ids = [s['id'] for s in cached_stickers]
                 sticker_section = """

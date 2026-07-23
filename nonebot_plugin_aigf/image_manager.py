@@ -62,10 +62,10 @@ class ImageManager:
         if not self._initialized:
             self._vlm = None
             # 只在 VLM 模式下初始化 VLM
-            if plugin_config.nyaturingtest_image_mode == "vlm" and plugin_config.nyaturingtest_vlm_enabled:
-                api_key = plugin_config.nyaturingtest_vlm_api_key or plugin_config.nyaturingtest_chat_openai_api_key
-                self._vlm = VLM(api_key=api_key, model=plugin_config.nyaturingtest_vlm_model,
-                                base_url=plugin_config.nyaturingtest_vlm_base_url)
+            if plugin_config.aigf_image_mode == "vlm" and plugin_config.aigf_vlm_enabled:
+                api_key = plugin_config.aigf_vlm_api_key or plugin_config.aigf_chat_openai_api_key
+                self._vlm = VLM(api_key=api_key, model=plugin_config.aigf_vlm_model,
+                                base_url=plugin_config.aigf_vlm_base_url)
             IMAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
             self._initialized = True
 

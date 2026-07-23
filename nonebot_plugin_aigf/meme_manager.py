@@ -252,7 +252,7 @@ class MemeManager:
     async def cleanup(self, max_count: int = 0):
         """自动收集的表情包超过上限时清理。优先级：最近未使用的先删"""
         if max_count <= 0:
-            max_count = plugin_config.nyaturingtest_meme_max_count
+            max_count = plugin_config.aigf_meme_max_count
         if len(self.collected_memes) <= max_count:
             return
         to_remove = []
