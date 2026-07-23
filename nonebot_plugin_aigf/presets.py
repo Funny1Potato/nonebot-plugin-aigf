@@ -1,0 +1,50 @@
+from dataclasses import asdict, dataclass, field
+import json
+import anyio
+from nonebot import logger
+import nonebot_plugin_localstore as store
+
+
+@dataclass
+class RolePreset:
+    name: str
+    role: str
+    knowledges: list[str] = field(default_factory=list)
+    hidden: bool = False
+
+
+_DEFAULT_PRESET = RolePreset(
+    name="小助手",
+    role="一个友好的群聊助手，会用轻松的语气和大家聊天",
+)
+
+PRESETS: dict[str, RolePreset] = {}
+PRESETS_DIR = store.get_plugin_config_dir() / "presets"
+
+
+async def load_presets():
+    PRESETS_DIR.mkdir(parents=True, exist_ok=True)
+    default_file = PRESETS_DIR / "default.json"
+    if not default_file.exists():
+        async with await anyio.open_file(default_file, "w", encoding="utf-8") as f:
+            await f.write(json.dumps(asdict(_DEFAULT_PRESET), ensure_ascii=False, indent=2))
+    try:
+        for filename in PRESETS_DIR.iterdir():
+            if filename.suffix == ".json":
+                try:
+                    async with await anyio.open_file(filename, encoding="utf-8") as f:
+                        data = json.loads(await f.read())
+                    PRESETS[filename.stem] = RolePreset(**data)
+                except Exception as e:
+                    logger.warning(f"无法加载预设 {filename.name}: {e}")
+    except Exception as e:
+        logger.error(f"扫描预设目录失败: {e}")
+    logger.info(f"已加载 {len(PRESETS)} 个预设")
+
+
+async def save_preset(name: str, preset: RolePreset):
+    PRESETS_DIR.mkdir(parents=True, exist_ok=True)
+    path = PRESETS_DIR / f"{name}.json"
+    async with await anyio.open_file(path, "w", encoding="utf-8") as f:
+        await f.write(json.dumps(asdict(preset), ensure_ascii=False, indent=2))
+    PRESETS[name] = preset
