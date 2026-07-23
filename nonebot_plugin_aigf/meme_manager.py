@@ -1,3 +1,18 @@
+# Copyright (C) 2026 Funny1Potato
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+
 import hashlib
 import json
 import re
@@ -237,7 +252,7 @@ class MemeManager:
     async def cleanup(self, max_count: int = 0):
         """自动收集的表情包超过上限时清理。优先级：最近未使用的先删"""
         if max_count <= 0:
-            max_count = plugin_config.aigf_meme_max_count
+            max_count = plugin_config.nyaturingtest_meme_max_count
         if len(self.collected_memes) <= max_count:
             return
         to_remove = []

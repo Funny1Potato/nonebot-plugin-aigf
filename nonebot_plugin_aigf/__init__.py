@@ -1,3 +1,19 @@
+# Copyright (C) 2025 shadow3aaa <shadow3aaaa@gmail.com>
+# Modified by Funny1Potato, 2026
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+
 import asyncio
 import base64
 from dataclasses import dataclass, field
@@ -31,10 +47,10 @@ from .presets import PRESETS, load_presets, save_preset, RolePreset
 from .session import Session
 
 __plugin_meta__ = PluginMetadata(
-    name="AI-group-friend", description="群聊特化LLM聊天机器人，具有记忆和表情包功能",
+    name="NYATuringTest", description="群聊特化LLM聊天机器人，具有记忆和表情包功能",
     usage="群聊特化LLM聊天机器人", type="application",
     config=Config, supported_adapters={"~onebot.v11"},
-    extra={"author": "Funny1Potato"},
+    extra={"author": "shadow3aaa"},
 )
 
 
@@ -53,8 +69,8 @@ class GroupState:
     messages_chunk: list[MMessage] = field(default_factory=list)
     last_message_time: float = 0.0
     client: LLMClient = field(default_factory=lambda: LLMClient(
-        client=AsyncOpenAI(api_key=plugin_config.aigf_chat_openai_api_key,
-                           base_url=plugin_config.aigf_chat_openai_base_url)))
+        client=AsyncOpenAI(api_key=plugin_config.nyaturingtest_chat_openai_api_key,
+                           base_url=plugin_config.nyaturingtest_chat_openai_base_url)))
     lock = asyncio.Lock()
 
 
@@ -181,7 +197,7 @@ async def _(event: GroupMessageEvent, args: Message = CommandArg()):
 async def _(event: GroupMessageEvent):
     state = _ensure_group_state(event.group_id)
     state.session = Session(id=str(event.group_id))
-    await state.session.load_preset(plugin_config.aigf_default_preset)
+    await state.session.load_preset(plugin_config.nyaturingtest_default_preset)
     await reset_cmd.finish("已重置会话")
 
 
@@ -214,7 +230,7 @@ async def _():
 @auto_chat.handle()
 async def handle_auto_chat(bot: Bot, event: GroupMessageEvent):
     group_id = event.group_id
-    if group_id not in plugin_config.aigf_enabled_groups:
+    if group_id not in plugin_config.nyaturingtest_enabled_groups:
         return
     # 跳过机器人自己的消息
     if event.get_user_id() == str(bot.self_id):
@@ -273,7 +289,7 @@ async def message2MMessage(bot_name: str, group_id: int, message: Message, bot: 
                 is_sticker = seg.data.get("sub_type") == 1
                 image_base64 = base64.b64encode(image_bytes).decode()
 
-                if plugin_config.aigf_image_mode == "llm":
+                if plugin_config.nyaturingtest_image_mode == "llm":
                     await meme_manager.save_to_cache(image_bytes=image_bytes, description="", emotion="")
                 else:
                     desc = await image_manager.get_image_description(image_base64=image_base64, is_sticker=is_sticker)
@@ -310,11 +326,11 @@ from nonebot import get_driver
 
 @get_driver().on_startup
 async def _():
-    logger.info(f"[AI-group-friend] 图片理解模式: {plugin_config.aigf_image_mode}")
+    logger.info(f"[NYATuringTest] 图片理解模式: {plugin_config.nyaturingtest_image_mode}")
     await load_presets()
     await meme_manager.load_all()
     # 加载默认预设到所有群
-    default = plugin_config.aigf_default_preset
-    for gid in plugin_config.aigf_enabled_groups:
+    default = plugin_config.nyaturingtest_default_preset
+    for gid in plugin_config.nyaturingtest_enabled_groups:
         state = _ensure_group_state(gid)
         await state.session.load_preset(default)
