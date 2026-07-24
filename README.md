@@ -2,7 +2,7 @@
     <a href="https://v2.nonebot.dev/store">
     <img src="https://raw.githubusercontent.com/fllesser/nonebot-plugin-template/refs/heads/resource/.docs/NoneBotPlugin.svg" width="310" alt="logo"></a>
 
-## ✨ nonebot-plugin-aigf ✨
+## ✨ AI-group-friend ✨
 
 群聊特化 LLM 聊天机器人，具有 LLM 驱动的记忆系统和表情包功能。
 
