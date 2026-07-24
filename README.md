@@ -75,7 +75,6 @@ AIGF_MEME_MAX_COUNT=200                # 自动收集的表情包最大数量（
 AIGF_DEFAULT_PRESET=default            # 默认预设名称（默认 "default"）
 
 # === VLM 配置（图片理解） ===
-# === 图片理解 ===
 AIGF_IMAGE_MODE="vlm"                             # 图片模式: vlm=独立VLM分析, llm=LLM直接看图
 AIGF_VLM_ENABLED=true                           # 是否启用VLM（仅 vlm 模式有效，默认 true）
 AIGF_VLM_MODEL="Pro/Qwen/Qwen2.5-VL-7B-Instruct" # VLM 模型名称
