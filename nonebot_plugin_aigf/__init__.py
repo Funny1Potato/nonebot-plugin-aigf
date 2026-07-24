@@ -18,7 +18,6 @@ import asyncio
 import base64
 from dataclasses import dataclass, field
 from datetime import datetime
-import json
 import re
 import ssl
 import traceback
@@ -30,7 +29,6 @@ from nonebot.adapters import Message
 from nonebot.adapters.onebot.v11 import (
     Bot, Event, GroupMessageEvent, MessageSegment, Message as OneBotMessage, PrivateMessageEvent,
 )
-from nonebot.matcher import Matcher
 from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
@@ -43,14 +41,15 @@ from .config import Config, plugin_config
 from .image_manager import IMAGE_CACHE_DIR, image_manager
 from .meme_manager import AtMessage, MemeMessage, TextMessage, meme_manager
 from .mem import Message as MMessage
-from .presets import PRESETS, load_presets, save_preset, RolePreset
+from .presets import PRESETS, load_presets
 from .session import Session
 
 __plugin_meta__ = PluginMetadata(
     name="AI-group-friend", description="群聊特化LLM聊天机器人，具有记忆和表情包功能",
     usage="群聊特化LLM聊天机器人", type="application",
+    homepage="https://github.com/Funny1Potato/nonebot-plugin-aigf",
     config=Config, supported_adapters={"~onebot.v11"},
-    extra={"author": "shadow3aaa"},
+    extra={"author": "Funny1Potato"},
 )
 
 

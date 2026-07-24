@@ -17,9 +17,6 @@
 import base64
 import json
 import re
-from dataclasses import asdict
-from datetime import datetime
-from pathlib import Path
 
 import anyio
 from nonebot import logger
@@ -29,7 +26,7 @@ from .config import plugin_config
 from .meme_manager import AtMessage, MemeMessage, TextMessage, meme_manager
 from .memory import MemoryManager
 from .mem import Message
-from .presets import PRESETS, RolePreset
+from .presets import PRESETS
 
 
 class Session:
@@ -37,7 +34,7 @@ class Session:
         self.id = id
         self.name = name
         self.role = role
-        self.memory = MemoryManager()
+        self.memory = MemoryManager(group_id=id)
         self.recent_messages: list[Message] = []
 
     async def load_preset(self, preset_name: str) -> bool:
@@ -64,9 +61,6 @@ class Session:
         long_term = await self.memory.load_long_term()
         active_users = MemoryManager.get_active_users(messages_chunk)
         friends = await self.memory.load_friends_batch(active_users)
-
-        # 构建 id→昵称映射
-        id_name_map = {u["id"]: u["name"] for u in active_users}
 
         # LLM 模式：读取缓存图片的 base64
         sticker_images: list[str] = []
@@ -167,11 +161,18 @@ class Session:
 
         # 群友信息（按 QQ 号存储，显示时带昵称）
         friends_str = ""
+        # 已有记忆的群友
         for uid, data in friends.items():
             display_name = data.get("name", uid)
             info_list = data.get("info", [])
             info_str = "、".join(info_list) if info_list else "暂无信息"
             friends_str += f"- {display_name}（QQ:{uid}）：{info_str}\n"
+        # 当前聊天中但还没有记忆的群友
+        active_users = MemoryManager.get_active_users(messages_chunk)
+        existing_ids = set(friends.keys())
+        new_users = [u for u in active_users if u["id"] not in existing_ids]
+        for u in new_users:
+            friends_str += f"- {u['name']}（QQ:{u['id']}）：暂无信息\n"
         friends_str = friends_str or "无"
 
         # 最近 10 条消息
@@ -188,10 +189,8 @@ class Session:
             if meme_list:
                 meme_section = f"""
 
-## 可用的表情包
+## 可用的表情包（用于发送）
 {meme_list}
-
-如果想发表情包，在 reply 中加入 {{"type": "meme", "id": "表情包id"}}。
 """
 
         # 缓存中的表情包（可供收藏）
@@ -232,27 +231,26 @@ class Session:
 ### 短期记忆
 {short_term_str}
 这是你对近期对话的记忆。你应该积极管理：
-- 每次回复时检查并更新，确保反映最新的对话状态
-- 过时的内容（如已结束的话题、已解决的问题）应删除
-- 新的上下文信息及时添加
-- 内容可以详细，不必精简
+- 添加：新的对话内容、临时上下文、有趣的梗
+- 修改：对话有新进展时，更新已有条目（用 index 指定要改哪条）
+- 删除：已结束的话题、已解决的问题、不再 relevant 的内容（用 index 指定要删哪条）
 
 ### 长期记忆
 {long_term_str}
 这是你记住的重要信息。你应该积极管理：
-- 发现新信息与旧记忆矛盾时，立即修改旧记忆
-- 某条记忆被证伪或不再适用时，立即删除
-- 每次回复时检查是否有值得新增的内容
-- 宁可多记多改，不要遗漏重要信息
-不要记：临时性的对话内容、无关紧要的闲聊、可以通过常识推断的信息。
+- 添加：新的事件、知识、规则
+- 修改：发现旧信息不准确或需要更新时（用 index 指定要改哪条）
+- 删除：被证伪、过时、不再适用的信息（用 index 指定要删哪条）
+不要记：临时性的对话内容、无关紧要的闲聊。
 
 ### 相关群友信息
 {friends_str}
 这是你对群友的了解。你应该积极管理：
-- 群友透露新信息时，立即添加或更新
-- 发现之前记错了，立即修改
-- 群友改名时，用 update_name 更新昵称
-- 每次对话都留意是否有新的有用信息
+- 添加：群友透露的新信息（职业、爱好、性格等）
+- 修改：发现之前记错了，或信息有变化时（用 index 指定要改哪条）
+- 删除：不再准确的信息（用 index 指定要删哪条）
+- update_name：群友改名时更新昵称
+注意：index 从 0 开始计数，对应上面列表中的第几条。修改和删除时必须指定正确的 index。
 
 ## 最近的聊天记录
 {recent_str}
@@ -278,27 +276,32 @@ class Session:
   ],
   "memory": {{
     "short_term": {{
-      "add": ["新记住的内容"],
-      "modify": [{{"index": 0, "content": "修改后的内容"}}],
+      "add": ["小明说他周末要去爬山"],
+      "modify": [{{"index": 0, "content": "小明说周末要去爬山，小红也想去"}}],
       "delete": [2]
     }},
     "long_term": {{
-      "add": ["新记住的内容"],
-      "modify": [{{"index": 0, "content": "修改后的内容"}}],
-      "delete": [2]
+      "add": ["群里组织过一次聚餐"],
+      "modify": [{{"index": 0, "content": "群规更新：不允许发广告和链接"}}],
+      "delete": [1]
     }},
     "friends": {{
-      "必须用QQ号做key，不要用昵称": {{
-        "add": ["新发现的信息"],
-        "modify": [{{"index": 0, "content": "修改后的内容"}}],
+      "123456": {{
+        "add": ["职业：程序员", "爱好：打游戏"],
+        "modify": [{{"index": 0, "content": "职业：前端工程师"}}],
         "delete": [1],
-        "update_name": "新昵称（当群友改名时更新）"
+        "update_name": "新昵称"
       }}
-    }},
-    "save_meme": [{{"id": "表情包id", "description": "你写的简短描述", "keywords": ["关键词1", "关键词2"]}}]（仅当上面列出了可收藏的表情包时才需要，可收藏多个）
+    }}
   }}
 }}
 ```
+
+示例说明：
+- "modify" 中的 "index" 是要修改的条目在列表中的位置（从 0 开始）
+- "delete" 中的数字是要删除的条目的 index
+- 修改和删除前，请先确认列表中对应 index 的内容是否正确
+- 如果不需要修改或删除，可以省略对应字段
 
 注意：
 - reply 中的元素也可以是纯字符串，等同于 {{"type": "text", "content": "..."}}

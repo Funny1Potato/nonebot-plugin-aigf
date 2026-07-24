@@ -20,10 +20,13 @@ import nonebot_plugin_localstore as store
 
 
 class MemoryManager:
-    def __init__(self):
-        self.data_dir = store.get_plugin_data_dir() / "memory"
-        self.friends_dir = self.data_dir / "friends"
+    def __init__(self, group_id: str = "default"):
+        self.group_id = group_id
+        # 短期/长期记忆按群隔离
+        self.data_dir = store.get_plugin_data_dir() / "memory" / group_id
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        # 群友信息全局共享
+        self.friends_dir = store.get_plugin_data_dir() / "memory" / "friends"
         self.friends_dir.mkdir(parents=True, exist_ok=True)
 
     async def load_short_term(self) -> list[str]:
@@ -75,11 +78,11 @@ class MemoryManager:
             await f.write(json.dumps(data, ensure_ascii=False, indent=2))
 
     async def load_friends_batch(self, users: list[dict[str, str]]) -> dict[str, dict]:
-        """批量加载群友信息。users 为 [{"id": "123", "name": "小明"}, ...]"""
+        """批量加载当前群的群友信息"""
         result = {}
         for user in users:
             data = await self.load_friend(user["id"])
-            if data:
+            if data and self.group_id in data.get("groups", []):
                 result[user["id"]] = data
         return result
 
@@ -133,7 +136,10 @@ class MemoryManager:
         for key, ops in friends_ops.items():
             # 如果 key 不是纯数字（QQ号），尝试从反查表中找到对应的 QQ 号
             user_id = key if key.isdigit() else nickname_to_id.get(key, key)
-            friend = await self.load_friend(user_id) or {"id": user_id, "name": key if not key.isdigit() else key, "info": []}
+            friend = await self.load_friend(user_id) or {"id": user_id, "name": key if not key.isdigit() else key, "info": [], "groups": []}
+            # 确保当前群在 groups 列表中
+            if self.group_id not in friend.get("groups", []):
+                friend.setdefault("groups", []).append(self.group_id)
             info = friend.get("info", [])
             for idx in sorted([int(i) for i in ops.get("delete", [])], reverse=True):
                 if 0 <= idx < len(info):
