@@ -99,7 +99,7 @@ async def spawn_state(state: GroupState):
                 continue
             now = asyncio.get_event_loop().time()
             reached_count = len(state.messages_chunk) >= 5
-            reached_time = (now - state.last_message_time) >= 5.0
+            reached_time = (now - state.last_message_time) >= 10.0
             if not reached_count and not reached_time:
                 continue
             messages_chunk = state.messages_chunk.copy()
