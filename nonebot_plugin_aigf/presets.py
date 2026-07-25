@@ -48,14 +48,15 @@ async def load_presets():
         for filename in PRESETS_DIR.iterdir():
             if filename.suffix == ".json":
                 try:
-                    async with await anyio.open_file(filename, encoding="utf-8") as f:
+                    async with await anyio.open_file(filename, encoding="utf-8-sig") as f:
                         data = json.loads(await f.read())
                     PRESETS[filename.stem] = RolePreset(**data)
+                    logger.debug(f"[预设] 已加载: {filename.stem}")
                 except Exception as e:
                     logger.warning(f"无法加载预设 {filename.name}: {e}")
     except Exception as e:
         logger.error(f"扫描预设目录失败: {e}")
-    logger.info(f"已加载 {len(PRESETS)} 个预设")
+    logger.success(f"[启动] 预设加载完成: {len(PRESETS)} 个")
 
 
 async def save_preset(name: str, preset: RolePreset):
@@ -64,3 +65,4 @@ async def save_preset(name: str, preset: RolePreset):
     async with await anyio.open_file(path, "w", encoding="utf-8") as f:
         await f.write(json.dumps(asdict(preset), ensure_ascii=False, indent=2))
     PRESETS[name] = preset
+    logger.info(f"[预设] 已保存: {name}")

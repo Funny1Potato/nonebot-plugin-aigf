@@ -79,6 +79,7 @@ class ImageManager:
         if cache.exists():
             try:
                 async with await anyio.open_file(cache, encoding="utf-8") as f:
+                    logger.debug(f"[VLM] 缓存命中: {cache.name}")
                     desc = ImageWithDescription.from_json(await f.read())
                 if desc.is_sticker != is_sticker:
                     desc.is_sticker = is_sticker
@@ -92,15 +93,16 @@ class ImageManager:
         if not image_format:
             return None
 
+        logger.debug(f"[VLM] 调用 VLM 分析图片, format={image_format}")
         if image_format.upper() == "GIF":
             gif_b64 = _transform_gif(image_base64)
             if not gif_b64:
                 return None
-            description = await self._vlm.request("用中文描述这张动态图的内容和含义，最多100字", gif_b64, "jpeg")
-            emotion = await self._vlm.request("分析这个表情包的情感，给出'情感，类型，含义'三元组", gif_b64, "jpeg")
+            description = await self._vlm.request("用中文简短描述这张动态图的内容，最多50字。如果图中有人物，只描述外貌特征（发色、表情、动作、服装等），不要猜测或识别具体角色名称。", gif_b64, "jpeg")
+            emotion = await self._vlm.request("用3个词概括这个表情包的情感，用顿号分隔，如：开心、得意、搞笑", gif_b64, "jpeg")
         else:
-            description = await self._vlm.request("用中文描述这张图片的内容和含义，最多100字", image_base64, image_format)
-            emotion = await self._vlm.request("分析这个表情包的情感，给出'情感，类型，含义'三元组", image_base64, "jpeg")
+            description = await self._vlm.request("用中文简短描述这张图片的内容，最多50字。如果图中有人物，只描述外貌特征（发色、表情、动作、服装等），不要猜测或识别具体角色名称。", image_base64, image_format)
+            emotion = await self._vlm.request("用3个词概括这个表情包的情感，用顿号分隔，如：开心、得意、搞笑", image_base64, "jpeg")
 
         if not description or not emotion:
             return None

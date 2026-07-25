@@ -47,7 +47,6 @@ from .session import Session
 __plugin_meta__ = PluginMetadata(
     name="AI-group-friend", description="群聊特化LLM聊天机器人，具有记忆和表情包功能",
     usage="群聊特化LLM聊天机器人", type="application",
-    homepage="https://github.com/Funny1Potato/nonebot-plugin-aigf",
     config=Config, supported_adapters={"~onebot.v11"},
     extra={"author": "Funny1Potato"},
 )
@@ -83,7 +82,7 @@ async def _resolve_user_id(bot: Bot, event: Event, nickname: str) -> int | None:
     try:
         members = await bot.get_group_member_list(group_id=event.group_id)
         for m in members:
-            if m.get("card", "").strip() == nickname or m.get("nickname", "").strip() == nickname:
+            if m.get("nickname", "").strip() == nickname:
                 return m["user_id"]
     except Exception as e:
         logger.error(f"获取群成员列表失败: {e}")
@@ -110,9 +109,12 @@ async def spawn_state(state: GroupState):
         try:
             # 从缓存中获取待处理的表情包
             stickers = meme_manager.get_cached_stickers()
+            logger.debug(f"[spawn_state] 处理 batch: {len(messages_chunk)} 条消息, 缓存表情包: {len(stickers)} 个")
             responses = await state.session.process(messages_chunk, state.client, cached_stickers=stickers)
-            # 处理完成后清空缓存（不管 LLM 是否收藏，缓存只用一次）
-            meme_manager.clear_cache()
+            logger.debug(f"[spawn_state] LLM 返回 {len(responses) if responses else 0} 条回复")
+            # 处理完成后清空缓存（只清空本次传给 LLM 的，避免跨 batch 重复）
+            if stickers:
+                meme_manager.clear_cache()
         except Exception as e:
             logger.error(f"Error: {e}")
             traceback.print_exc()
@@ -144,6 +146,7 @@ async def spawn_state(state: GroupState):
                     await state.bot.send(message=str(response), event=state.event)
             if pending:
                 await state.bot.send(message=pending, event=state.event)
+                logger.success(f"[发送] 消息已发送")
         except Exception as e:
             logger.error(f"发送消息失败: {e}")
 
@@ -234,6 +237,7 @@ async def handle_auto_chat(bot: Bot, event: GroupMessageEvent):
     # 跳过机器人自己的消息
     if event.get_user_id() == str(bot.self_id):
         return
+    logger.success(f"[接收] 群{group_id} 收到消息 from {event.user_id}")
 
     state = _ensure_group_state(group_id)
     user_id = event.get_user_id()
@@ -248,7 +252,7 @@ async def handle_auto_chat(bot: Bot, event: GroupMessageEvent):
 
     try:
         user_info = await bot.get_group_member_info(group_id=group_id, user_id=int(user_id))
-        nickname = user_info.get("card") or user_info.get("nickname") or str(user_id)
+        nickname = user_info.get("nickname") or str(user_id)
     except Exception:
         nickname = str(user_id)
 
@@ -257,11 +261,38 @@ async def handle_auto_chat(bot: Bot, event: GroupMessageEvent):
         state.bot = bot
         state.messages_chunk.append(MMessage(time=datetime.now(), user_name=nickname, user_id=user_id, content=message_content))
         state.last_message_time = asyncio.get_event_loop().time()
+    # 自动更新 QQ 昵称
+    try:
+        qq_nickname = user_info.get("nickname", "") if 'user_info' in dir() else ""
+        if qq_nickname:
+            await state.session.memory.update_nickname(user_id, qq_nickname)
+    except Exception:
+        pass
+
+
+async def _extract_text(message_content, bot: Bot, group_id: int) -> str:
+    """从消息中提取纯文本（用于 reply 上下文）"""
+    try:
+        if isinstance(message_content, str):
+            msg = OneBotMessage(message_content)
+        elif isinstance(message_content, list):
+            msg = OneBotMessage()
+            for seg in message_content:
+                if isinstance(seg, dict) and "type" in seg:
+                    msg.append(MessageSegment(type=seg["type"], data=seg.get("data", {})))
+        else:
+            return str(message_content)[:50]
+        text = msg.extract_plain_text().strip()
+        return text[:50] if text else "（非文字消息）"
+    except Exception:
+        return "（无法获取）"
 
 
 async def message2MMessage(bot_name: str, group_id: int, message: Message, bot: Bot, state: GroupState) -> str:
     content = ""
+    logger.debug(f"[消息解析] 开始解析消息，共 {len(list(message))} 个 segment")
     for seg in message:
+        logger.debug(f"[消息解析] segment type={seg.type}")
         if seg.type == "text":
             content += seg.data.get("text", "")
         elif seg.type in ("image", "emoji"):
@@ -289,12 +320,13 @@ async def message2MMessage(bot_name: str, group_id: int, message: Message, bot: 
                 image_base64 = base64.b64encode(image_bytes).decode()
 
                 if plugin_config.aigf_image_mode == "llm":
-                    await meme_manager.save_to_cache(image_bytes=image_bytes, description="", emotion="")
+                    cache_id = await meme_manager.save_to_cache(image_bytes=image_bytes, description="", emotion="")
+                    logger.debug(f"[缓存] LLM模式 - 图片已缓存, cache_id={cache_id}")
                 else:
                     desc = await image_manager.get_image_description(image_base64=image_base64, is_sticker=is_sticker)
-                    logger.info(f"[VLM] 描述: {desc.description if desc else None}, 情感: {desc.emotion if desc else None}")
+                    logger.info(f"[VLM] 描述: {desc.description if desc else None}")
                     if desc:
-                        await meme_manager.save_to_cache(
+                        cache_id = await meme_manager.save_to_cache(
                             image_bytes=image_bytes, description=desc.description, emotion=desc.emotion,
                         )
                         if is_sticker:
@@ -313,9 +345,20 @@ async def message2MMessage(bot_name: str, group_id: int, message: Message, bot: 
             else:
                 try:
                     info = await bot.get_group_member_info(group_id=group_id, user_id=int(uid))
-                    content += f" @{info.get('card') or info.get('nickname') or uid} "
+                    content += f" @{info.get('nickname') or uid} "
                 except Exception:
                     content += f" @{uid} "
+        elif seg.type == "reply":
+            try:
+                reply_msg_id = seg.data.get("message_id")
+                if reply_msg_id:
+                    original = await bot.get_msg(message_id=int(reply_msg_id))
+                    if original and "message" in original:
+                        replied_text = await _extract_text(original["message"], bot, group_id)
+                        replied_sender = original.get("sender", {}).get("nickname", "未知")
+                        content += f"[回复 {replied_sender} 的消息: \"{replied_text}\"] "
+            except Exception:
+                pass
     return content.strip()
 
 
@@ -325,7 +368,7 @@ from nonebot import get_driver
 
 @get_driver().on_startup
 async def _():
-    logger.info(f"[AI-group-friend] 图片理解模式: {plugin_config.aigf_image_mode}")
+    logger.success(f"[启动] 图片理解模式: {plugin_config.aigf_image_mode}")
     await load_presets()
     await meme_manager.load_all()
     # 加载默认预设到所有群

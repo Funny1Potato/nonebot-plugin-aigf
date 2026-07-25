@@ -80,7 +80,7 @@ class MemeManager:
     async def load_all(self):
         self.admin_memes = await self._load_file(_meme_dir() / "memes.json")
         self.collected_memes = await self._load_file(_meme_dir() / "collected.json")
-        logger.info(f"已加载表情包: 管理员 {len(self.admin_memes)} 个, 自动收集 {len(self.collected_memes)} 个")
+        logger.success(f"[启动] 表情包加载完成: 管理员 {len(self.admin_memes)} 个, 自动收集 {len(self.collected_memes)} 个")
 
     async def _load_file(self, path: Path) -> dict[str, Meme]:
         if not path.exists():
@@ -127,7 +127,9 @@ class MemeManager:
         self._recent.append(meme_id)
         if len(self._recent) > self._recent_max:
             self._recent.pop(0)
-        return str(self._full_path(meme.path))
+        path = str(self._full_path(meme.path))
+        logger.debug(f"[resolve] {meme_id} -> {path}")
+        return path
 
     async def auto_collect(self, image_bytes: bytes, description: str) -> bool:
         file_hash = hashlib.md5(image_bytes).hexdigest()[:12]
@@ -141,7 +143,7 @@ class MemeManager:
             id=meme_id, path=filename, keywords=keywords, description=description[:50],
         )
         await self._save_collected()
-        logger.info(f"自动收藏表情包: {meme_id} - {description[:30]}")
+        logger.debug(f"[自动收藏] 生成条目: {meme_id}")
         await self.cleanup()
         return True
 
@@ -188,7 +190,7 @@ class MemeManager:
             "description": description,
             "emotion": emotion,
         }
-        logger.info(f"[缓存] 表情包已缓存: {cache_id} - {description[:20]}")
+        logger.info(f"[缓存] 表情包已缓存: {cache_id}")
         return cache_id
 
     def get_cached_stickers(self) -> list[dict]:
@@ -224,7 +226,7 @@ class MemeManager:
             id=cache_id, path=filename, keywords=keywords, description=description,
         )
         await self._save_collected()
-        logger.info(f"[缓存] 表情包已保存: {cache_id} - {description[:30]}")
+        logger.success(f"[表情包收藏] 已保存到表情包库: {cache_id} - {description[:30]}")
         return True
 
     def clear_cache(self):
@@ -247,7 +249,7 @@ class MemeManager:
         for cid in to_remove:
             del self._cache_index[cid]
         if cleaned:
-            logger.info(f"[缓存] 清理了 {cleaned} 个过期缓存文件")
+            logger.info(f"[清理] 缓存清理: {cleaned} 个过期文件")
 
     async def cleanup(self, max_count: int = 0):
         """自动收集的表情包超过上限时清理。优先级：最近未使用的先删"""
@@ -271,7 +273,7 @@ class MemeManager:
                 meme_path.unlink()
             self.collected_memes.pop(meme.id, None)
         await self._save_collected()
-        logger.info(f"清理了 {len(to_remove)} 个表情包")
+        logger.info(f"[清理] 表情包清理: {len(to_remove)} 个")
 
 
 meme_manager = MemeManager()

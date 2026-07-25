@@ -89,9 +89,11 @@ class MemoryManager:
     async def apply_ops(self, memory_ops: dict):
         if not memory_ops:
             return
+        logger.debug(f"[记忆] 开始执行记忆操作")
 
         st_ops = memory_ops.get("short_term", {})
         if st_ops:
+            logger.debug(f"[记忆] 短期记忆操作: add={len(st_ops.get('add', []))}, modify={len(st_ops.get('modify', []))}, delete={len(st_ops.get('delete', []))}")
             items = await self.load_short_term()
             for idx in sorted([int(i) for i in st_ops.get("delete", [])], reverse=True):
                 if 0 <= idx < len(items):
@@ -107,6 +109,7 @@ class MemoryManager:
 
         lt_ops = memory_ops.get("long_term", {})
         if lt_ops:
+            logger.debug(f"[记忆] 长期记忆操作: add={len(lt_ops.get('add', []))}, modify={len(lt_ops.get('modify', []))}, delete={len(lt_ops.get('delete', []))}")
             facts = await self.load_long_term()
             for idx in sorted([int(i) for i in lt_ops.get("delete", [])], reverse=True):
                 if 0 <= idx < len(facts):
@@ -133,13 +136,23 @@ class MemoryManager:
                     pass
 
         friends_ops = memory_ops.get("friends", {})
+        if friends_ops:
+            logger.debug(f"[记忆] 群友信息操作: {len(friends_ops)} 个群友")
         for key, ops in friends_ops.items():
             # 如果 key 不是纯数字（QQ号），尝试从反查表中找到对应的 QQ 号
             user_id = key if key.isdigit() else nickname_to_id.get(key, key)
-            friend = await self.load_friend(user_id) or {"id": user_id, "name": key if not key.isdigit() else key, "info": [], "groups": []}
+            friend = await self.load_friend(user_id) or {
+                "id": user_id,
+                "nickname": key if not key.isdigit() else "",
+                "aliases": [],
+                "past_nicknames": [],
+                "info": [],
+                "groups": [],
+            }
             # 确保当前群在 groups 列表中
             if self.group_id not in friend.get("groups", []):
                 friend.setdefault("groups", []).append(self.group_id)
+            # 处理 info 的增删改
             info = friend.get("info", [])
             for idx in sorted([int(i) for i in ops.get("delete", [])], reverse=True):
                 if 0 <= idx < len(info):
@@ -152,10 +165,49 @@ class MemoryManager:
                 if item and item not in info:
                     info.append(item)
             friend["info"] = info
+            # 处理 aliases 的增删
+            aliases = friend.get("aliases", [])
+            for item in ops.get("add_alias", []):
+                if item and item not in aliases:
+                    aliases.append(item)
+            for item in ops.get("remove_alias", []):
+                if item in aliases:
+                    aliases.remove(item)
+            friend["aliases"] = aliases
             # 更新昵称
             if ops.get("update_name"):
-                friend["name"] = ops["update_name"]
+                friend["nickname"] = ops["update_name"]
             await self.save_friend(user_id, friend)
+            logger.debug(f"[记忆] 群友信息已保存: {user_id}")
+
+    async def update_nickname(self, user_id: str, qq_nickname: str):
+        """自动更新群友的 QQ 全局昵称"""
+        if not user_id or not qq_nickname:
+            return
+        friend = await self.load_friend(user_id)
+        if friend is None:
+            # 新群友，初始化
+            friend = {
+                "id": user_id,
+                "nickname": qq_nickname,
+                "aliases": [],
+                "past_nicknames": [],
+                "info": [],
+                "groups": [self.group_id],
+            }
+        else:
+            old_nick = friend.get("nickname", "")
+            if old_nick and old_nick != qq_nickname:
+                # 昵称变了，记录到 past_nicknames
+                past = friend.get("past_nicknames", [])
+                if old_nick not in past:
+                    past.append(old_nick)
+                friend["past_nicknames"] = past
+            friend["nickname"] = qq_nickname
+            if self.group_id not in friend.get("groups", []):
+                friend.setdefault("groups", []).append(self.group_id)
+        await self.save_friend(user_id, friend)
+        logger.info(f"[记忆] 群友昵称更新: {user_id} -> {qq_nickname}")
 
     @staticmethod
     def get_active_users(messages: list) -> list[dict[str, str]]:

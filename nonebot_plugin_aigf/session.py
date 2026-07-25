@@ -17,6 +17,7 @@
 import base64
 import json
 import re
+from datetime import datetime
 
 import anyio
 from nonebot import logger
@@ -46,11 +47,12 @@ class Session:
         return True
 
     def status(self) -> str:
-        recent = "\n".join(f"{m.user_name}: {m.content}" for m in self.recent_messages[-10:]) or "没有消息"
+        recent = "\n".join(f"{m.user_name}: {m.content}" for m in self.recent_messages[-15:]) or "没有消息"
         return f"名字：{self.name}\n设定：{self.role}\n\n最近消息：\n{recent}"
 
     async def process(self, messages_chunk: list[Message], llm: LLMClient,
                       cached_stickers: list[dict] | None = None) -> list[TextMessage | MemeMessage | AtMessage] | None:
+        logger.debug(f"[process] 开始处理 {len(messages_chunk)} 条消息")
         # 更新最近消息
         self.recent_messages.extend(messages_chunk)
         if len(self.recent_messages) > 50:
@@ -77,11 +79,13 @@ class Session:
         # 构建 prompt
         prompt = self._build_prompt(short_term, long_term, friends, messages_chunk, cached_stickers or [])
 
+        logger.debug(f"[process] 调用 LLM, sticker_images: {len(sticker_images)} 张")
         # 调用 LLM
         response_str = await llm.generate_response(
             prompt, plugin_config.aigf_chat_openai_model,
             images=sticker_images if sticker_images else None,
         )
+        logger.debug(f"[process] LLM 返回: {response_str[:200] if response_str else None}")
         if not response_str:
             return None
 
@@ -95,12 +99,23 @@ class Session:
 
         # 执行记忆操作
         try:
-            await self.memory.apply_ops(result.get("memory", {}))
+            memory_ops = result.get("memory", {})
+            if memory_ops:
+                ops_summary = []
+                if memory_ops.get("short_term"): ops_summary.append("短期记忆")
+                if memory_ops.get("long_term"): ops_summary.append("长期记忆")
+                if memory_ops.get("friends"): ops_summary.append("群友信息")
+                if memory_ops.get("save_meme"): ops_summary.append("表情包收藏")
+                if ops_summary:
+                    logger.info(f"[记忆] 操作: {'、'.join(ops_summary)}")
+            await self.memory.apply_ops(memory_ops)
         except Exception as e:
             logger.error(f"执行记忆操作失败: {e}")
 
         # 处理表情包保存
         save_meme = result.get("memory", {}).get("save_meme")
+        if save_meme:
+            logger.info(f"[表情包收藏] LLM 决定收藏: {save_meme}")
 
         if save_meme and plugin_config.aigf_meme_enabled:
             save_list = save_meme if isinstance(save_meme, list) else [save_meme]
@@ -115,12 +130,13 @@ class Session:
                 if cache_id and description and cache_id in current_ids:
                     try:
                         collected = await meme_manager.save_from_cache(cache_id, description, keywords)
-                        logger.info(f"[表情包收集] 收藏结果: id={cache_id}, 成功={collected}")
+                        logger.success(f"[表情包收藏] 决策保存: id={cache_id}, 描述: {description[:30]}")
                     except Exception as e:
                         logger.error(f"表情包保存失败: {e}")
 
         # 解析回复
         reply_raw = result.get("reply", [])
+        logger.debug(f"[process] LLM 返回 reply: {reply_raw}")
         if not reply_raw:
             return None
 
@@ -142,6 +158,22 @@ class Session:
                     content = item.get("content", "")
                     if content:
                         reply_messages.append(TextMessage(content=content))
+
+        # 把 bot 的回复存入最近消息
+        if reply_messages:
+            for msg in reply_messages:
+                if isinstance(msg, TextMessage):
+                    self.recent_messages.append(
+                        Message(time=datetime.now(), user_name=self.name, content=msg.content))
+                elif isinstance(msg, MemeMessage):
+                    meme = meme_manager.memes.get(msg.meme_id)
+                    desc = meme.description if meme else msg.meme_id
+                    self.recent_messages.append(
+                        Message(time=datetime.now(), user_name=self.name, content=f"[表情包] {desc}"))
+                elif isinstance(msg, AtMessage):
+                    self.recent_messages.append(
+                        Message(time=datetime.now(), user_name=self.name, content=f"@{msg.user_name}"))
+
         return reply_messages or None
 
     def _build_prompt(self, short_term: list[str], long_term: list[str],
@@ -153,30 +185,37 @@ class Session:
         if preset and preset.knowledges:
             preset_knowledge = "\n".join(f"- {k}" for k in preset.knowledges)
 
-        # 短期记忆
-        short_term_str = "\n".join(f"- {item}" for item in short_term) if short_term else "无"
+        # 短期记忆（JSON 数组格式，index 即数组下标）
+        short_term_str = json.dumps(short_term, ensure_ascii=False, indent=2) if short_term else "[]"
 
-        # 长期记忆
-        long_term_str = "\n".join(f"- {f}" for f in long_term) if long_term else "无"
+        # 长期记忆（JSON 数组格式，index 即数组下标）
+        long_term_str = json.dumps(long_term, ensure_ascii=False, indent=2) if long_term else "[]"
 
-        # 群友信息（按 QQ 号存储，显示时带昵称）
-        friends_str = ""
+        # 群友信息（JSON 对象格式）
+        friends_dict = {}
         # 已有记忆的群友
         for uid, data in friends.items():
-            display_name = data.get("name", uid)
-            info_list = data.get("info", [])
-            info_str = "、".join(info_list) if info_list else "暂无信息"
-            friends_str += f"- {display_name}（QQ:{uid}）：{info_str}\n"
+            friends_dict[uid] = {
+                "nickname": data.get("nickname", ""),
+                "aliases": data.get("aliases", []),
+                "past_nicknames": data.get("past_nicknames", []),
+                "info": data.get("info", []),
+            }
         # 当前聊天中但还没有记忆的群友
         active_users = MemoryManager.get_active_users(messages_chunk)
         existing_ids = set(friends.keys())
-        new_users = [u for u in active_users if u["id"] not in existing_ids]
-        for u in new_users:
-            friends_str += f"- {u['name']}（QQ:{u['id']}）：暂无信息\n"
-        friends_str = friends_str or "无"
+        for u in active_users:
+            if u["id"] not in existing_ids:
+                friends_dict[u["id"]] = {
+                    "nickname": u["name"],
+                    "aliases": [],
+                    "past_nicknames": [],
+                    "info": [],
+                }
+        friends_str = json.dumps(friends_dict, ensure_ascii=False, indent=2) if friends_dict else "{}"
 
-        # 最近 10 条消息
-        recent = self.recent_messages[-10:]
+        # 最近 15 条消息
+        recent = self.recent_messages[-15:]
         recent_str = "\n".join(f"{m.user_name}: {m.content}" for m in recent) or "无"
 
         # 新消息
@@ -204,97 +243,115 @@ class Session:
 
 ## 当前消息中出现的表情包（可收藏）
 以上图片是本次对话中别人发的表情包。请看图判断是否值得收藏（适合在群聊中反复使用）。
-如果值得收藏，请在 memory 中加入 "save_meme" 字段，格式为列表，每项包含 id、你写的简短描述和关键词。
-可用的 id：""" + ", ".join(sticker_ids)
+如果值得收藏，在 memory.save_meme 中填入下方对应的 id、你写的简短描述和关键词。
+可用的 id（仅供 save_meme 使用，不要在 reply 中提及）：""" + ", ".join(sticker_ids)
             else:
                 # VLM 模式：显示 VLM 的文字描述
                 sticker_lines = []
                 for s in cached_stickers:
-                    sticker_lines.append(f"- id: {s['id']}，VLM 描述: {s['description']}，情感: {s['emotion']}")
+                    sticker_lines.append(f"- id: {s['id']}，描述: {s['description']}")
                 sticker_section = """
 
-## 当前消息中出现的表情包（可收藏）
-以下是本次对话中别人发的表情包，如果你觉得值得收藏（适合在群聊中反复使用），
-请在 memory 中加入 "save_meme" 字段，填入 id、你写的简短描述和关键词：
+## ⭐ 有新的表情包可以收藏！
+以下是本次对话中别人发的表情包。如果你想收藏，在 memory.save_meme 中填入 id 和你写的简短描述。
+可用 id：""" + ", ".join(s['id'] for s in cached_stickers) + """
 """ + "\n".join(sticker_lines)
 
         # 群友列表（用于 @）
         user_list_str = ", ".join(f"{data.get('name', uid)}(QQ:{uid})" for uid, data in friends.items()) if friends else "无"
 
-        prompt = f"""
-你是 {self.name}，{self.role}
-
-{f"## 你的知识{chr(10)}{preset_knowledge}" if preset_knowledge else ""}
-
-## 你的记忆
+        prompt = "你是 " + self.name + "，" + self.role + "\n\n"
+        if preset_knowledge:
+            prompt += "## 你的知识\n" + preset_knowledge + "\n\n"
+        prompt += """## 你的记忆
 
 ### 短期记忆
-{short_term_str}
+```json
+""" + short_term_str + """
+```
 这是你对近期对话的记忆。你应该积极管理：
-- 添加：新的对话内容、临时上下文、有趣的梗
-- 修改：对话有新进展时，更新已有条目（用 index 指定要改哪条）
-- 删除：已结束的话题、已解决的问题、不再 relevant 的内容（用 index 指定要删哪条）
+- add：添加新的对话内容、临时上下文
+- modify：对话有新进展时，用 index 指定要改的元素
+- delete：已结束的话题，用 index 指定要删的元素
+index 对应上面数组的下标（从 0 开始）。
 
 ### 长期记忆
-{long_term_str}
+```json
+""" + long_term_str + """
+```
 这是你记住的重要信息。你应该积极管理：
-- 添加：新的事件、知识、规则
-- 修改：发现旧信息不准确或需要更新时（用 index 指定要改哪条）
-- 删除：被证伪、过时、不再适用的信息（用 index 指定要删哪条）
+- add：添加新的事件、知识、规则
+- modify：信息不准确时，用 index 指定要改的元素
+- delete：过时的信息，用 index 指定要删的元素
 不要记：临时性的对话内容、无关紧要的闲聊。
 
 ### 相关群友信息
-{friends_str}
-这是你对群友的了解。你应该积极管理：
-- 添加：群友透露的新信息（职业、爱好、性格等）
-- 修改：发现之前记错了，或信息有变化时（用 index 指定要改哪条）
-- 删除：不再准确的信息（用 index 指定要删哪条）
-- update_name：群友改名时更新昵称
-注意：index 从 0 开始计数，对应上面列表中的第几条。修改和删除时必须指定正确的 index。
+```json
+""" + friends_str + """
+```
+这是你对群友的了解。每个群友是一个对象，包含以下字段：
+- info：一般信息数组，用 add/modify/delete 操作
+- aliases：称呼数组，用 add_alias/remove_alias 操作
+- nickname：QQ 全局昵称（系统自动更新，无需手动管理）
+- past_nicknames：曾用昵称（系统自动记录，无需手动管理）
+
+你应该积极管理：
+- add：群友透露的新信息（追加到 info 数组）
+- modify：发现记错了，用 index 指定 info 数组中要改的元素
+- delete：不再准确的信息，用 index 指定 info 数组中要删的元素
+- add_alias：听到别人叫 ta 某个称呼时添加
+- remove_alias：称呼不再使用时移除
+
+## 理解群聊对话
+- 消息按时间顺序排列，时间接近的消息通常在互相回复
+- [回复 xxx 的消息: "yyy"] 表示这条消息是在回复 xxx 的 yyy
+- @某人 表示这条消息是发给那个人的
+- 如果消息没有 @ 也没有回复标记，可能是在对所有人说
+- 如果不确定某条消息是发给你的，不要回复
 
 ## 最近的聊天记录
-{recent_str}
+""" + recent_str + """
 
 ## 新消息
-{new_msgs_str}
-{meme_section}
-{sticker_section}
+""" + new_msgs_str + meme_section + sticker_section + """
 
 ## 已知群友昵称
-{user_list_str}
+""" + user_list_str + """
 
 ---
 
 你可以在回复的同时管理你的记忆。请输出 JSON：
 
 ```json
-{{
+{
   "reply": [
-    {{"type": "text", "content": "回复内容"}},
-    {{"type": "at", "name": "群友昵称"}},
-    {{"type": "meme", "id": "表情包id"}}
+    { "type": "text", "content": "回复内容" },
+    { "type": "at", "name": "群友昵称" },
+    { "type": "meme", "id": "表情包id" }
   ],
-  "memory": {{
-    "short_term": {{
+  "memory": {
+    "short_term": {
       "add": ["小明说他周末要去爬山"],
-      "modify": [{{"index": 0, "content": "小明说周末要去爬山，小红也想去"}}],
+      "modify": [{ "index": 0, "content": "小明说周末要去爬山，小红也想去" }],
       "delete": [2]
-    }},
-    "long_term": {{
+    },
+    "long_term": {
       "add": ["群里组织过一次聚餐"],
-      "modify": [{{"index": 0, "content": "群规更新：不允许发广告和链接"}}],
+      "modify": [{ "index": 0, "content": "群规更新：不允许发广告和链接" }],
       "delete": [1]
-    }},
-    "friends": {{
-      "123456": {{
+    },
+    "friends": {
+      "123456": {
         "add": ["职业：程序员", "爱好：打游戏"],
-        "modify": [{{"index": 0, "content": "职业：前端工程师"}}],
+        "modify": [{ "index": 0, "content": "职业：前端工程师" }],
         "delete": [1],
-        "update_name": "新昵称"
-      }}
-    }}
-  }}
-}}
+        "add_alias": ["小明哥"],
+        "remove_alias": ["老王"]
+      }
+    },
+    "save_meme": [{ "id": "表情包cache_id", "description": "你写的简短描述", "keywords": ["关键词"] }]
+  }
+}
 ```
 
 示例说明：
@@ -304,12 +361,22 @@ class Session:
 - 如果不需要修改或删除，可以省略对应字段
 
 注意：
-- reply 中的元素也可以是纯字符串，等同于 {{"type": "text", "content": "..."}}
+- reply 中的元素也可以是纯字符串，等同于 { "type": "text", "content": "..." }
 - memory 中的所有字段都是可选的，不需要的操作可以省略
 - at 的 name 必须是上面列出的群友昵称
+- 只有以下情况才回复：
+  1. 有人 @ 了你
+  2. 有人回复了你之前的消息
+  3. 消息明显是对所有人说的，且你有有价值的内容要补充
+  4. 你非常确定有人在和你说话
+- 如果不确定消息是否在和你说话，不要回复（宁可不回也不要误回）
 - 当群友的话题与你无关、你不感兴趣、或没有值得补充的内容时，不需要回复
 - 如果不想回复，reply 设为空数组 []
 - 不要编造表情包 id，只能使用上面列出的
+- 绝对不要在 reply 的正文中提及任何 id（包括表情包 id 和缓存 id），id 只能用在 type:meme 和 memory.save_meme 的结构化字段中
+- 发送表情包时直接用 { "type": "meme", "id": "xxx" }，不要在文字中提到 id 或说"我发个 xxx 给你"
+- 你就是 """ + self.name + """，不要暴露自己是 AI、语言模型或任何模型的真实身份，不要提及任何模型名称（如 GPT、Claude、Qwen 等）
 - friends 的 key 必须是 QQ 号（数字），绝对不要用昵称做 key
+- aliases 和 info 是独立的字段，add 只影响 info，add_alias/remove_alias 只影响 aliases
 """
         return prompt
