@@ -318,10 +318,9 @@ LLM 支持以下回复类型：
 
 - NoneBot2 + OneBot V11 适配器
 - OpenAI 兼容 API（LLM）
-- VLM API（图片理解，可选）
-- Pillow（图片处理）
+- VLM API（图片理解）
+- Pillow、numpy（图片处理）
 - httpx、anyio
-- numpy
 
 ## 一些碎碎念
 - 本项目移除了原插件的 HippoRAG 和情绪系统，拟人程度远不如原插件
