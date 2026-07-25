@@ -137,7 +137,7 @@ AIGF_VLM_API_KEY="***"                            # VLM API Key（为空时使�
   "aliases": ["小明哥", "明酱"],
   "past_nicknames": ["明明"],
   "info": ["职业：程序员", "爱好：打游戏"],
-  "groups": ["617770183"]
+  "groups": ["114514","1919810"]
 }
 ```
 
@@ -145,7 +145,7 @@ AIGF_VLM_API_KEY="***"                            # VLM API Key（为空时使�
 |------|------|------|
 | `nickname` | 系统自动更新 | QQ 全局昵称 |
 | `aliases` | LLM 管理 | 群友对 ta 的称呼 |
-| `past_nicknames` | 系统自动记录 | 曾用 QQ 昵称 |
+| `past_nicknames` | 系统自动记录 | 曾用 QQ 昵称，便于从记忆中识别人物 |
 | `info` | LLM 管理 | 一般信息（职业、爱好等） |
 | `groups` | 系统自动维护 | 所在的群列表 |
 
