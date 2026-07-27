@@ -16,79 +16,145 @@
 
 ## 📖 介绍
 
-> 基于 [shadow3aaa/nonebot-plugin-nyaturingtest](https://github.com/shadow3aaa/nonebot-plugin-nyaturingtest) 重构，移除了 HippoRAG 和情绪系统，改为 LLM 自主管理记忆，并添加表情包存储和发送功能。
-* 本项目对原项目代码的修改及重构均有AI高度参与，若有做得不够好的地方，请手下留情。
+群聊特化 LLM 聊天机器人 **beta 测试版**，在 v0.3.2 基础上增加了拟人化增强功能。
 
-### 特点:
+> ⚠️ **注意**：这是 beta 测试版本，用于测试新功能。安装方式为**覆盖安装**，会替换现有的 nonebot-plugin-aigf。
+
+## 🆕 Beta 版新增特性
+
+### 🎭 社交能量系统
+机器人拥有动态的"社交能量"（0.0~1.0），影响回复意愿和热情程度：
+- **精力充沛**（≥0.8）：看到什么都想插嘴
+- **状态不错**（≥0.6）：有兴趣的话题会主动参与
+- **一般般**（≥0.4）：有人找就回，不太主动
+- **有点懒**（≥0.2）：倾向于潜水
+- **不想说话**（<0.2）：完全不想说话
+
+能量会自然恢复，回复后消耗（回复越长消耗越多），形成自然的"话多→累了→安静→恢复"周期。
+
+### 💬 回复风格自然化
+- 像发微信一样口语化，不再写正式段落
+- 回复长度有变化：有时一两个字，有时几句话
+- 可以使用网络用语（"哈哈"、"233"、"确实"等）
+- 允许敷衍回复（"嗯嗯"、"哈哈哈"）
+- 不再对每条消息都认真回复
+
+### 📨 消息合并
+群友连续发送的多条消息会被自动合并为一条，避免 LLM 看到碎片化的上下文：
+- 同一用户在 `AIGF_MERGE_WINDOW`（默认 5 秒）内的连续消息合并显示
+- 智能触发延迟：检测到连续发送时等待完整消息再处理
+
+### 🔍 联网搜索系统
+让机器人能够主动搜索不懂的梗/网络用语，弥补大模型知识延迟问题：
+- **两阶段模式**：LLM 先分析是否需要搜索，需要时调用搜索 API
+- **Function Calling 模式**：LLM 自主决定是否调用搜索工具（需要模型支持）
+- 支持多种搜索 API：**Tavily**（默认）、**DuckDuckGo**（免费）、**Bing**
+
+### 🧠 文化记忆系统
+第四层记忆，专门存储梗、网络用语、流行语：
+- LLM 主动识别并提取新的文化词汇
+- 通过搜索学到的梗会自动存入文化记忆
+- 根据当前聊天内容匹配相关的文化知识注入 prompt
+- 让机器人能够理解和跟上群内的梗
+
+### 🧠 选择性回复
+基于社交能量和话题兴趣度决定是否回复，不再机械地响应所有 @ 和提及。
+
+## 📖 原有特性（v0.3.2）
 
 - 🧠 **LLM 驱动的记忆系统**：短期记忆、长期记忆、群友信息，LLM 自主增删改
-- 🖼️ **表情包功能**：AI 自主决定发表情包；自动从群聊中收藏表情包（缓存机制）
+- 🖼️ **表情包功能**：AI 自主决定发表情包；自动从群聊中收藏表情包
 - 🔍 **图片理解**：支持 VLM 模式和 LLM 直接看图模式
-- 💬 **对话理解**：通过 reply 标记和 @ 理解群聊中的对话关系，自主决定是否发言
 - 📝 **预设系统**：支持角色预设，含可编辑的默认预设
-- ⚡ **轻量高效**：单次 LLM 调用完成对话 + 记忆管理，节约token
+- ⚡ **轻量高效**：单次 LLM 调用完成对话 + 记忆管理
 
-## 💿 安装
+## 💿 安装（覆盖安装）
 
-> [!IMPORTANT]
-> 要使用本插件, 你至少需要
->
-> - 一个有效的 openai 规范接口 api key (根据你的 base_url，可以不是 openai 的)，你需要在 `.env` 文件中配置对应的 api 地址
+> ⚠️ **重要**：Beta 版采用覆盖安装方式，会替换现有的 nonebot-plugin-aigf。建议先备份原有配置和数据。
 
-<details open>
-<summary>使用 nb-cli 安装</summary>
-在 nonebot2 项目的根目录下打开命令行, 输入以下指令即可安装（暂时不行，还未上架）
-
-    nb plugin install nonebot-plugin-aigf --upgrade
-
-</details>
-
-<details>
-<summary>使用包管理器安装</summary>
+### 方式一：pip 覆盖安装
 
 ```bash
-pip install nonebot-plugin-aigf
+# 卸载旧版本（如果有）
+pip uninstall nonebot-plugin-aigf
+
+# 安装 beta 版
+pip install nonebot-plugin-aigf==0.4.0-beta
 ```
 
-在 `pyproject.toml` 中添加：
+### 方式二：本地开发安装
 
-```toml
-[tool.nonebot]
-plugins = ["nonebot-plugin-aigf"]
+```bash
+# 克隆或下载本项目
+cd nonebot-plugin-aigf
+
+# 安装基础依赖
+pip install -e .
+
+# 可选：安装搜索功能依赖（根据需要选择）
+pip install tavily-python        # Tavily 搜索（推荐）
+pip install duckduckgo-search    # DuckDuckGo 搜索（免费）
+# Bing 搜索使用 httpx，已在基础依赖中，无需额外安装
 ```
 
-</details>
-
-## 配置
+### 配置
 
 在 `.env.prod` 中添加：
 
-```env
-# === 必填 ===
-AIGF_CHAT_OPENAI_API_KEY="***"         # LLM API Key
-AIGF_CHAT_OPENAI_BASE_URL="***"        # LLM API 地址
-AIGF_CHAT_OPENAI_MODEL="***"           # LLM 模型名称
-AIGF_ENABLED_GROUPS=[123456, 789012]   # 启用的群号列表
+#### 必填（与原版相同）
 
-# === 可选 ===
+```env
+AIGF_CHAT_OPENAI_API_KEY="sk-xxxxxxxxxxxx"
+AIGF_CHAT_OPENAI_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
+AIGF_CHAT_OPENAI_MODEL="qwen-plus"
+AIGF_ENABLED_GROUPS=[123456, 789012]
+```
+
+#### Beta 版新增配置
+
+```env
+# --- 消息合并 ---
+AIGF_MERGE_WINDOW=5.0                  # 消息合并时间窗口/秒（默认 5.0）
+
+# --- 联网搜索 ---
+AIGF_SEARCH_ENABLED=false              # 是否启用联网搜索（默认 false）
+AIGF_SEARCH_MODE=two_stage             # 搜索模式: two_stage / function_call
+AIGF_SEARCH_API=tavily                 # 搜索API: tavily / duckduckgo / bing
+AIGF_SEARCH_API_KEY=""                 # 搜索 API Key（tavily/bing 必填，duckduckgo 无需）
+AIGF_SEARCH_MAX_RESULTS=3              # 最大搜索结果数
+```
+
+#### 原有可选配置
+
+```env
+# --- 基础 ---
 AIGF_MEME_ENABLED=true                 # 是否启用表情包功能（默认 true）
 AIGF_MEME_MAX_COUNT=200                # 自动收集的表情包最大数量（默认 200）
 AIGF_DEFAULT_PRESET=default            # 默认预设名称（默认 "default"）
 
-# === VLM 配置（图片理解） ===
-AIGF_IMAGE_MODE="vlm"                             # 图片模式: vlm=独立VLM分析, llm=LLM直接看图
-AIGF_VLM_ENABLED=true                             # 是否启用VLM（仅 vlm 模式有效，默认 true）
-AIGF_VLM_MODEL="Pro/Qwen/Qwen2.5-VL-7B-Instruct"  # VLM 模型名称
-AIGF_VLM_BASE_URL="https://api.siliconflow.cn/v1" # VLM API 地址
-AIGF_VLM_API_KEY="***"                            # VLM API Key（为空时使用 chat 的 key）
+# --- 请求控制 ---
+AIGF_BATCH_COUNT=10                    # 攒满多少条消息后触发 LLM 请求（默认 10）
+AIGF_BATCH_TIMEOUT=30.0                # 距最后一条消息多少秒后触发（默认 30.0）
+AIGF_RECENT_MESSAGES=15                # prompt 中包含的最近历史消息条数（默认 15）
+
+# --- 代理 ---
+AIGF_PROXY_ENABLED=false               # 是否启用代理（默认 false）
+AIGF_HTTP_PROXY="http://127.0.0.1:7890"
+AIGF_HTTPS_PROXY="http://127.0.0.1:7890"
+
+# --- 图片理解（VLM） ---
+AIGF_IMAGE_MODE="vlm"                  # vlm=独立VLM分析, llm=LLM直接看图
+AIGF_VLM_ENABLED=true                  # 是否启用VLM（默认 true）
+AIGF_VLM_MODEL="qwen3.6-plus"         # VLM 模型名称
+AIGF_VLM_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
+AIGF_VLM_API_KEY=""                    # 为空时使用 chat key
 ```
 
 ## 命令
 
 | 命令 | 说明 | 权限 |
 |------|------|------|
-| `help` / `帮助` | 显示帮助信息 | SUPERUSER |
-| `status` / `状态` | 查看机器人状态（角色、最近消息） | SUPERUSER |
+| `status` / `状态` | 查看机器人状态（角色、社交能量、最近消息） | SUPERUSER |
 | `set_role <名字> <设定>` | 设置机器人角色 | SUPERUSER |
 | `reset` / `重置` | 重置会话（清空所有记忆） | SUPERUSER |
 | `presets` | 查看可用的角色预设 | SUPERUSER |
@@ -97,230 +163,47 @@ AIGF_VLM_API_KEY="***"                            # VLM API Key（为空时使�
 
 ## 触发机制
 
-- 攒够 **5 条**新消息，或最后一条消息后 **10 秒**内无新消息，触发一次处理
-- 每次处理时，LLM 收到最近 **15 条**聊天记录 + 三层记忆 + 预设 + 表情包列表
-- LLM 一次调用同时完成：回复决策 + 记忆管理 + 表情包选择
-
-## 对话理解
-
-机器人通过以下方式理解群聊中的对话关系：
-
-- **reply 标记**：消息中包含 `[回复 xxx 的消息: "yyy"]`，表示在回复某人
-- **@ 提及**：`@某人` 表示消息是发给那个人的
-- **时间推断**：时间接近的消息通常在互相回复
-
-**回复决策规则**：
-- 有人 @ 了机器人 → 回复
-- 有人回复了机器人之前的消息 → 回复
-- 消息明显是对所有人说的，且有值得补充的内容 → 回复
-- 不确定是否在和自己说话 → **不回复**
+- 攒够 **10 条**新消息，或最后一条消息后 **30 秒**内无新消息，触发一次处理
+- 若超时触发时检测到同一用户在连续发送（间隔 < `AIGF_MERGE_WINDOW`），自动等待下一周期
+- 消息合并窗口内的同一用户连续消息会被合并为一条展示给 LLM
 
 ## 记忆系统
 
-机器人拥有三层记忆，由 LLM 在每次回复时自主管理：
+四层记忆由 LLM 自主管理：
 
 ### 短期记忆
-
-存储在 `<插件数据目录>/memory/<群号>/short_term.json`，内容为 LLM 维护的信息列表，包括对话摘要、临时上下文、有趣的梗等。LLM 可以添加、修改、删除条目。
+对话摘要、临时上下文，LLM 可增删改。按群隔离存储。
 
 ### 长期记忆
-
-存储在 `<插件数据目录>/memory/<群号>/long_term.json`，内容为 LLM 认为值得长期记住的信息，如群内发生的事件、群规、群友分享的有用知识等。LLM 可添加、修改、删除。不应记录临时对话或常识信息。
+重要事件、知识，LLM 可增删改。按群隔离存储。
 
 ### 群友信息
+每个群友一个 JSON 文件，全局共享。包含昵称、别名、曾用昵称、个人信息、所在群列表。
 
-存储在 `<插件数据目录>/memory/friends/<QQ号>.json`，每个群友一个文件，以 QQ 号命名。LLM 记录群友的昵称、职业、爱好、说过的话、与其他群友的关系等。具体保存方式如下：
-```json
-{
-  "id": "123456",
-  "nickname": "小明",
-  "aliases": ["小明哥", "明酱"],
-  "past_nicknames": ["明明"],
-  "info": ["职业：程序员", "爱好：打游戏"],
-  "groups": ["114514","1919810"]
-}
-```
+### 文化记忆（Beta 新增）
+梗、网络用语、流行语。LLM 主动学习和存储，根据聊天内容自动匹配。
 
-| 字段 | 来源 | 说明 |
-|------|------|------|
-| `nickname` | 系统自动更新 | QQ 全局昵称 |
-| `aliases` | LLM 管理 | 群友对 ta 的称呼 |
-| `past_nicknames` | 系统自动记录 | 曾用 QQ 昵称，便于从记忆中识别人物 |
-| `info` | LLM 管理 | 一般信息（职业、爱好等） |
-| `groups` | 系统自动维护 | 所在的群列表 |
+## 与 v0.3.2 的区别
 
-## 表情包功能
-
-### 工作原理
-
-```
-群聊中有人发图片/表情包
-    ↓
-下载图片 → VLM 分析内容和情感
-    ↓
-保存到缓存目录（<缓存目录>/sticker_cache/）
-    ↓
-下一次消息处理时，LLM 在 Prompt 中看到缓存的表情包
-    ↓
-LLM 决定是否收藏 → 保存到 memes 目录
-```
-
-### 表情包素材库
-
-存放在 `<插件数据目录>/memes/` 下：
-
-```
-memes/
-├── memes.json          ← 管理员手动配置
-├── collected.json      ← 机器人自动收集
-└── *.jpg/png/gif       ← 表情包图片文件
-```
-
-#### 管理员手动配置
-
-编辑 `memes.json`：
-
-```json
-[
-  {
-    "id": "happy_spin",
-    "path": "happy_spin.jpg",
-    "keywords": ["开心", "高兴", "庆祝"],
-    "description": "开心到转圈的小人"
-  }
-]
-```
-
-| 字段 | 必填 | 说明 |
-|------|------|------|
-| `id` | ✅ | 唯一标识符，AI 用这个选择表情包 |
-| `path` | ✅ | 图片文件名（相对于 memes 目录） |
-| `keywords` | ✅ | 适用场景关键词 |
-| `description` | ✅ | 一句话描述内容 |
-
-修改后执行 `/重载表情包` 即可生效，无需重启。
-
-#### 自动收集
-
-机器人收到图片时，VLM 分析后保存到缓存。LLM 在回复时看到缓存的表情包，决定是否收藏：
-
-```json
-{
-  "memory": {
-    "save_meme": [
-      {"id": "a1b2c3d4e5f6", "description": "开心转圈的小人", "keywords": ["开心"]}
-    ]
-  }
-}
-```
-
-- 图片按 MD5 hash 去重
-- 超过 `AIGF_MEME_MAX_COUNT` 上限时，优先清理最近未使用的
-- 缓存中的表情包只处理一次，处理后清空
-
-#### 发送表情包
-
-LLM 在回复中指定表情包 id（来自 memes.json 或 collected.json）：
-
-```json
-{"type": "meme", "id": "happy_spin"}
-```
-
-## 图片理解模式
-
-通过 `AIGF_IMAGE_MODE` 配置：
-
-| 模式 | 流程 | 适用场景 |
-|------|------|---------|
-| `vlm`（默认） | 图片 → VLM 分析 → 文字描述给 LLM | LLM 不支持图片输入 |
-| `llm` | 图片 → base64 直接附在 LLM prompt 中 | LLM 支持视觉（GPT-4o 等） |
-
-VLM 模式下，描述限制 50 字，情感只输出 3 个词，不识别具体角色名称（只描述外貌特征）。
-
-## 预设系统
-
-首次运行后在 `<插件配置目录>/presets/` 下生成 `default.json`：
-
-```json
-{
-  "name": "小助手",
-  "role": "一个友好的群聊助手，会用轻松的语气和大家聊天",
-  "knowledges": [],
-  "hidden": false
-}
-```
-
-### 预设字段
-
-| 字段 | 说明 |
-|------|------|
-| `name` | 角色名称 |
-| `role` | 角色设定 |
-| `knowledges` | 预设知识列表（会注入 Prompt） |
-| `hidden` | 是否在 `/presets` 中隐藏 |
-
-### 添加新预设
-
-在 `presets/` 目录下创建新的 JSON 文件，如 `猫娘.json`：
-
-```json
-{
-  "name": "喵喵",
-  "role": "一个可爱的群猫娘，群里的其它人是你的主人",
-  "knowledges": [
-    "猫娘有猫耳和猫尾巴",
-    "猫娘喜欢吃鱼"
-  ],
-  "hidden": false
-}
-```
-
-然后在群内执行 `set_preset 猫娘` 即可加载。
-
-## 消息格式
-
-LLM 支持以下回复类型：
-
-| 类型 | 格式 | 说明 |
-|------|------|------|
-| 文本 | `{"type": "text", "content": "..."}` | 纯文本消息 |
-| @ | `{"type": "at", "name": "群友昵称"}` | 艾特群友 |
-| 表情包 | `{"type": "meme", "id": "表情包id"}` | 发送表情包 |
-
-文本和 @ 会合并为一条消息发送，表情包单独发送。
-
-## 图片理解模式
-
-支持两种图片理解模式，通过 `AIGF_IMAGE_MODE` 配置：
-
-### VLM 模式（默认）
-
-```
-图片 → VLM 分析 → 缓存描述 → 文字 prompt 给 LLM
-```
-
-- LLM 不需要支持图片输入
-- VLM 单独调用，消耗较少 token
-- 适合 LLM 不支持视觉的场景
-
-### LLM 模式
-
-```
-图片 → 直接以 base64 附在 LLM prompt 中 → LLM 看图决策
-```
-
-- LLM 直接看到图片，理解更准确
-- 不需要配置 VLM
-- 适合支持视觉的模型（如 GPT-4o、Qwen-VL）
-- 图片 base64 会消耗更多 token
+| 特性 | v0.3.2 | 0.4.0-beta |
+|------|--------|------------|
+| 回复风格 | 较正式，长度固定 | 口语化，长度有变化 |
+| 回复决策 | 硬编码规则 | 社交能量 + 兴趣驱动 |
+| 消息处理 | 逐条展示 | 连续消息自动合并 |
+| 触发时机 | 固定超时 | 智能延迟（等待连续发送完成） |
+| 社交状态 | 无 | 动态社交能量系统 |
+| 联网搜索 | 无 | 支持 Tavily / DuckDuckGo |
+| 文化记忆 | 无 | 自动学习和匹配梗/网络用语 |
+| 架构 | 单次 LLM 调用 | 单次 LLM 调用（搜索时可能两次） |
 
 ## 依赖
 
-- NoneBot2 + OneBot V11 适配器
-- OpenAI 兼容 API（LLM）
-- VLM API（图片理解）
-- Pillow、numpy（图片处理）
-- httpx、anyio
+```
+必需：nonebot2, nonebot-adapter-onebot, nonebot-plugin-localstore,
+     openai, httpx, anyio, pillow, pydantic, numpy
+可选：tavily-python（Tavily 搜索）、duckduckgo-search（DuckDuckGo 搜索）
+     Bing 搜索使用 httpx（已在必需依赖中），无需额外安装
+```
 
 ## 一些碎碎念
 - 本项目移除了原插件的 HippoRAG 和情绪系统，拟人程度远不如原插件
