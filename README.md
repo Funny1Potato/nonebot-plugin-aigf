@@ -79,7 +79,7 @@
 pip uninstall nonebot-plugin-aigf
 
 # 安装 beta 版
-pip install nonebot-plugin-aigf==0.4.0b0
+pip install nonebot-plugin-aigf==0.4.0b1
 ```
 
 
