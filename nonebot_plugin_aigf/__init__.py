@@ -36,7 +36,7 @@ from openai import AsyncOpenAI
 
 require("nonebot_plugin_localstore")
 
-from .client import LLMClient
+from .client import LLMClient, make_http_client
 from .config import Config, plugin_config
 from .image_manager import IMAGE_CACHE_DIR, image_manager
 from .meme_manager import AtMessage, MemeMessage, TextMessage, meme_manager
@@ -48,6 +48,7 @@ __plugin_meta__ = PluginMetadata(
     name="AI-group-friend", description="群聊特化LLM聊天机器人，具有记忆和表情包功能",
     usage="群聊特化LLM聊天机器人", type="application",
     config=Config, supported_adapters={"~onebot.v11"},
+    homepage="https://github.com/Funny1Potato/nonebot-plugin-aigf",
     extra={"author": "Funny1Potato"},
 )
 
@@ -68,7 +69,8 @@ class GroupState:
     last_message_time: float = 0.0
     client: LLMClient = field(default_factory=lambda: LLMClient(
         client=AsyncOpenAI(api_key=plugin_config.aigf_chat_openai_api_key,
-                           base_url=plugin_config.aigf_chat_openai_base_url)))
+                           base_url=plugin_config.aigf_chat_openai_base_url,
+                           http_client=make_http_client())))
     lock = asyncio.Lock()
 
 
@@ -98,10 +100,19 @@ async def spawn_state(state: GroupState):
             if not state.messages_chunk:
                 continue
             now = asyncio.get_event_loop().time()
-            reached_count = len(state.messages_chunk) >= 5
-            reached_time = (now - state.last_message_time) >= 10.0
+            reached_count = len(state.messages_chunk) >= plugin_config.aigf_batch_count
+            reached_time = (now - state.last_message_time) >= plugin_config.aigf_batch_timeout
             if not reached_count and not reached_time:
                 continue
+            # 智能触发延迟：超时触发时，若最后两条消息来自同一用户且间隔在合并窗口内，等待下一周期
+            if (reached_time and not reached_count and
+                    len(state.messages_chunk) >= 2):
+                last = state.messages_chunk[-1]
+                prev = state.messages_chunk[-2]
+                if (last.user_id == prev.user_id and
+                        (last.time - prev.time).total_seconds() < plugin_config.aigf_merge_window):
+                    logger.debug(f"[spawn_state] 检测到连续发送，等待完整消息")
+                    continue
             messages_chunk = state.messages_chunk.copy()
             state.messages_chunk.clear()
 
@@ -153,8 +164,6 @@ async def spawn_state(state: GroupState):
 
 # ---- 命令 ----
 
-help_cmd = on_command(rule=is_group_message, permission=SUPERUSER, cmd="help", aliases={"帮助"}, priority=0, block=True)
-help_pm = on_command(rule=is_private_message, permission=SUPERUSER, cmd="help", aliases={"帮助"}, priority=0, block=True)
 status_cmd = on_command(rule=is_group_message, permission=SUPERUSER, cmd="status", aliases={"状态"}, priority=0, block=True)
 set_role_cmd = on_command(rule=is_group_message, permission=SUPERUSER, cmd="set_role", aliases={"设置角色"}, priority=0, block=True)
 reset_cmd = on_command(rule=is_group_message, permission=SUPERUSER, cmd="reset", aliases={"重置"}, priority=0, block=True)
@@ -172,11 +181,6 @@ def _ensure_group_state(group_id: int) -> GroupState:
         _tasks.add(task)
         task.add_done_callback(_tasks.discard)
     return group_states[group_id]
-
-
-@help_cmd.handle()
-async def _(event: GroupMessageEvent):
-    await help_cmd.finish("命令: help status set_role reset presets set_preset reload_meme")
 
 
 @status_cmd.handle()

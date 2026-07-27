@@ -221,3 +221,100 @@ class MemoryManager:
                 seen.add(uid)
                 users.append({"id": uid, "name": name})
         return users
+
+    # ========== 文化记忆管理 ==========
+
+    async def load_culture(self) -> list[dict]:
+        """加载文化记忆（梗、网络用语等）"""
+        path = self.data_dir / "culture.json"
+        if not path.exists():
+            return []
+        try:
+            async with await anyio.open_file(path, encoding="utf-8") as f:
+                return json.loads(await f.read()).get("terms", [])
+        except Exception as e:
+            logger.error(f"加载文化记忆失败: {e}")
+            return []
+
+    async def save_culture(self, terms: list[dict]):
+        """保存文化记忆"""
+        path = self.data_dir / "culture.json"
+        async with await anyio.open_file(path, "w", encoding="utf-8") as f:
+            await f.write(json.dumps({"terms": terms}, ensure_ascii=False, indent=2))
+
+    async def apply_culture_ops(self, ops: dict):
+        """处理文化记忆操作（add/modify/delete）
+        
+        ops 格式:
+        {
+            "add": [{"term": "yyds", "meaning": "永远的神", "context": "表示赞美"}],
+            "modify": [{"index": 0, "term": "yyds", "meaning": "永远滴神", "context": "..."}],
+            "delete": [1]
+        }
+        """
+        if not ops:
+            return
+        
+        terms = await self.load_culture()
+        
+        # 删除操作
+        for idx in sorted([int(i) for i in ops.get("delete", [])], reverse=True):
+            if 0 <= idx < len(terms):
+                removed = terms.pop(idx)
+                logger.debug(f"[文化记忆] 删除: {removed.get('term', '')}")
+        
+        # 修改操作
+        for mod in ops.get("modify", []):
+            idx = int(mod.get("index", -1))
+            if 0 <= idx < len(terms):
+                # 更新字段
+                for key in ["term", "meaning", "context", "usage_examples"]:
+                    if key in mod and mod[key]:
+                        terms[idx][key] = mod[key]
+                logger.debug(f"[文化记忆] 修改: {terms[idx].get('term', '')}")
+        
+        # 添加操作
+        for item in ops.get("add", []):
+            if item and item.get("term"):
+                # 检查是否已存在
+                existing = next((t for t in terms if t.get("term") == item["term"]), None)
+                if existing:
+                    # 更新使用次数
+                    existing["usage_count"] = existing.get("usage_count", 0) + 1
+                    logger.debug(f"[文化记忆] 更新使用次数: {item['term']}")
+                else:
+                    # 新增条目
+                    from datetime import datetime
+                    new_term = {
+                        "term": item["term"],
+                        "meaning": item.get("meaning", ""),
+                        "context": item.get("context", ""),
+                        "usage_examples": item.get("usage_examples", []),
+                        "first_seen": datetime.now().strftime("%Y-%m-%d"),
+                        "usage_count": 1,
+                        "source": item.get("source", "learned"),
+                    }
+                    terms.append(new_term)
+                    logger.info(f"[文化记忆] 新增: {item['term']} - {item.get('meaning', '')}")
+        
+        await self.save_culture(terms)
+
+    def match_culture_terms(self, terms: list[dict], text: str) -> list[dict]:
+        """根据文本内容匹配相关的文化词汇
+        
+        Args:
+            terms: 文化记忆列表
+            text: 要匹配的文本
+            
+        Returns:
+            匹配到的文化词汇列表
+        """
+        matched = []
+        text_lower = text.lower()
+        
+        for term in terms:
+            term_str = term.get("term", "").lower()
+            if term_str and term_str in text_lower:
+                matched.append(term)
+        
+        return matched

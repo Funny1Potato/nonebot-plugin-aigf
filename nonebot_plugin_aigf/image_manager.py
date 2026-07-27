@@ -26,6 +26,7 @@ import nonebot_plugin_localstore as store
 import numpy as np
 from PIL import Image
 from .config import plugin_config
+from .client import make_http_client
 from .vlm import VLM
 
 IMAGE_CACHE_DIR = Path(str(store.get_plugin_cache_dir())) / "image_cache"
@@ -63,9 +64,12 @@ class ImageManager:
             self._vlm = None
             # 只在 VLM 模式下初始化 VLM
             if plugin_config.aigf_image_mode == "vlm" and plugin_config.aigf_vlm_enabled:
+                if not plugin_config.aigf_vlm_model or not plugin_config.aigf_vlm_base_url:
+                    raise ValueError("VLM 模式已启用，但 AIGF_VLM_MODEL 或 AIGF_VLM_BASE_URL 未配置")
                 api_key = plugin_config.aigf_vlm_api_key or plugin_config.aigf_chat_openai_api_key
                 self._vlm = VLM(api_key=api_key, model=plugin_config.aigf_vlm_model,
-                                base_url=plugin_config.aigf_vlm_base_url)
+                                base_url=plugin_config.aigf_vlm_base_url,
+                                http_client=make_http_client())
             IMAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
             self._initialized = True
 
@@ -98,10 +102,10 @@ class ImageManager:
             gif_b64 = _transform_gif(image_base64)
             if not gif_b64:
                 return None
-            description = await self._vlm.request("用中文简短描述这张动态图的内容，最多50字。如果图中有人物，只描述外貌特征（发色、表情、动作、服装等），不要猜测或识别具体角色名称。", gif_b64, "jpeg")
+            description = await self._vlm.request("用中文简短描述这张动态图的内容，最多50字。如果图中有人物，只描述人物的外貌特征（发色、表情、动作、服装等），不要猜测或识别具体角色名称。若图中有文字，请尽量完整描述，若文字过多，可简要描述。", gif_b64, "jpeg")
             emotion = await self._vlm.request("用3个词概括这个表情包的情感，用顿号分隔，如：开心、得意、搞笑", gif_b64, "jpeg")
         else:
-            description = await self._vlm.request("用中文简短描述这张图片的内容，最多50字。如果图中有人物，只描述外貌特征（发色、表情、动作、服装等），不要猜测或识别具体角色名称。", image_base64, image_format)
+            description = await self._vlm.request("用中文简短描述这张图片的内容，最多50字。如果图中有人物，只描述人物的外貌特征（发色、表情、动作、服装等），不要猜测或识别具体角色名称。若图中有文字，请尽量完整描述，若文字过多，可简要描述。", image_base64, image_format)
             emotion = await self._vlm.request("用3个词概括这个表情包的情感，用顿号分隔，如：开心、得意、搞笑", image_base64, "jpeg")
 
         if not description or not emotion:
