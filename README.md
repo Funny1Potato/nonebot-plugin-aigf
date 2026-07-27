@@ -72,30 +72,16 @@
 
 > ⚠️ **重要**：Beta 版采用覆盖安装方式，会替换现有的 nonebot-plugin-aigf。建议先备份原有配置和数据。
 
-### 方式一：pip 覆盖安装
+### pip 覆盖安装
 
 ```bash
 # 卸载旧版本（如果有）
 pip uninstall nonebot-plugin-aigf
 
 # 安装 beta 版
-pip install nonebot-plugin-aigf==0.4.0-beta
+pip install nonebot-plugin-aigf==0.4.0b0
 ```
 
-### 方式二：本地开发安装
-
-```bash
-# 克隆或下载本项目
-cd nonebot-plugin-aigf
-
-# 安装基础依赖
-pip install -e .
-
-# 可选：安装搜索功能依赖（根据需要选择）
-pip install tavily-python        # Tavily 搜索（推荐）
-pip install duckduckgo-search    # DuckDuckGo 搜索（免费）
-# Bing 搜索使用 httpx，已在基础依赖中，无需额外安装
-```
 
 ### 配置
 
