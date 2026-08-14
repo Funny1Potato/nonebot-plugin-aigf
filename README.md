@@ -95,8 +95,8 @@ AIGF_ENERGY_BASELINE=0.7               # 社交能量基线，能量会自然向
 
 # --- 联网搜索 ---
 AIGF_SEARCH_ENABLED=false              # 是否启用联网搜索（默认 false）
-AIGF_SEARCH_MODE=two_stage             # 搜索模式: two_stage / function_call（默认 two_stage）
-AIGF_SEARCH_API=tavily                 # 搜索API: tavily / bocha / bing（默认 tavily）
+AIGF_SEARCH_MODE="two_stage"             # 搜索模式: two_stage / function_call（默认 two_stage）
+AIGF_SEARCH_API="tavily"                 # 搜索API: tavily / bocha / bing（默认 tavily）
 AIGF_SEARCH_API_KEY=""                 # 搜索 API Key（tavily/bocha/bing 必填）
 AIGF_SEARCH_MAX_RESULTS=3              # 最大搜索结果数（默认 3）
 
