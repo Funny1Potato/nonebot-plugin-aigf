@@ -2,8 +2,6 @@
     <a href="https://v2.nonebot.dev/store">
     <img src="https://raw.githubusercontent.com/fllesser/nonebot-plugin-template/refs/heads/resource/.docs/NoneBotPlugin.svg" width="310" alt="logo"></a>
 
-> ⚠️ **注意**：该 beta 测试版本内容已上线正式版，请勿使用该版本。
-
 ## ✨ AI-group-friend ✨
 
 群聊特化 LLM 聊天机器人，具有 LLM 驱动的记忆系统和表情包功能。
@@ -15,6 +13,8 @@
     <img src="https://img.shields.io/badge/python-3.10+-blue?style=flat-square&logo=python&logoColor=white" alt="python">
 </p>
 </div>
+
+> ⚠️ **注意**：该 beta 测试版本内容已上线正式版，请勿使用该版本。
 
 ## 📖 介绍
 
