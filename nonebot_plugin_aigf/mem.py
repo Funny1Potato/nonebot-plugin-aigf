@@ -24,3 +24,4 @@ class Message:
     user_name: str
     content: str
     user_id: str = ""
+    is_at_only: bool = False

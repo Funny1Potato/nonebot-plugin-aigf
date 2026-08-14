@@ -36,7 +36,7 @@ from openai import AsyncOpenAI
 
 require("nonebot_plugin_localstore")
 
-from .client import LLMClient
+from .client import LLMClient, make_http_client
 from .config import Config, plugin_config
 from .image_manager import IMAGE_CACHE_DIR, image_manager
 from .meme_manager import AtMessage, MemeMessage, TextMessage, meme_manager
@@ -48,6 +48,7 @@ __plugin_meta__ = PluginMetadata(
     name="AI-group-friend", description="群聊特化LLM聊天机器人，具有记忆和表情包功能",
     usage="群聊特化LLM聊天机器人", type="application",
     config=Config, supported_adapters={"~onebot.v11"},
+    homepage="https://github.com/Funny1Potato/nonebot-plugin-aigf",
     extra={"author": "Funny1Potato"},
 )
 
@@ -68,7 +69,8 @@ class GroupState:
     last_message_time: float = 0.0
     client: LLMClient = field(default_factory=lambda: LLMClient(
         client=AsyncOpenAI(api_key=plugin_config.aigf_chat_openai_api_key,
-                           base_url=plugin_config.aigf_chat_openai_base_url)))
+                           base_url=plugin_config.aigf_chat_openai_base_url,
+                           http_client=make_http_client())))
     lock = asyncio.Lock()
 
 
@@ -98,8 +100,20 @@ async def spawn_state(state: GroupState):
             if not state.messages_chunk:
                 continue
             now = asyncio.get_event_loop().time()
-            reached_count = len(state.messages_chunk) >= 5
-            reached_time = (now - state.last_message_time) >= 10.0
+            reached_count = len(state.messages_chunk) >= plugin_config.aigf_batch_count
+            # 根据最后消息状态选择超时时间
+            last_msg = state.messages_chunk[-1] if state.messages_chunk else None
+            effective_timeout = plugin_config.aigf_batch_timeout
+            if last_msg and last_msg.is_at_only:
+                # 纯@消息，等待用户发送后续内容
+                effective_timeout = plugin_config.aigf_incomplete_timeout
+            elif len(state.messages_chunk) >= 2:
+                # 连续发送检测：最后两条消息来自同一用户且间隔在合并窗口内
+                prev_msg = state.messages_chunk[-2]
+                if (last_msg.user_id == prev_msg.user_id and
+                        (last_msg.time - prev_msg.time).total_seconds() < plugin_config.aigf_merge_window):
+                    effective_timeout = plugin_config.aigf_incomplete_timeout
+            reached_time = (now - state.last_message_time) >= effective_timeout
             if not reached_count and not reached_time:
                 continue
             messages_chunk = state.messages_chunk.copy()
@@ -153,8 +167,6 @@ async def spawn_state(state: GroupState):
 
 # ---- 命令 ----
 
-help_cmd = on_command(rule=is_group_message, permission=SUPERUSER, cmd="help", aliases={"帮助"}, priority=0, block=True)
-help_pm = on_command(rule=is_private_message, permission=SUPERUSER, cmd="help", aliases={"帮助"}, priority=0, block=True)
 status_cmd = on_command(rule=is_group_message, permission=SUPERUSER, cmd="status", aliases={"状态"}, priority=0, block=True)
 set_role_cmd = on_command(rule=is_group_message, permission=SUPERUSER, cmd="set_role", aliases={"设置角色"}, priority=0, block=True)
 reset_cmd = on_command(rule=is_group_message, permission=SUPERUSER, cmd="reset", aliases={"重置"}, priority=0, block=True)
@@ -172,11 +184,6 @@ def _ensure_group_state(group_id: int) -> GroupState:
         _tasks.add(task)
         task.add_done_callback(_tasks.discard)
     return group_states[group_id]
-
-
-@help_cmd.handle()
-async def _(event: GroupMessageEvent):
-    await help_cmd.finish("命令: help status set_role reset presets set_preset reload_meme")
 
 
 @status_cmd.handle()
@@ -243,7 +250,7 @@ async def handle_auto_chat(bot: Bot, event: GroupMessageEvent):
     user_id = event.get_user_id()
 
     async with state.lock:
-        message_content = await message2MMessage(
+        message_content, is_at_only = await message2MMessage(
             bot_name=state.session.name, group_id=group_id,
             message=event.original_message, bot=bot, state=state)
 
@@ -259,7 +266,7 @@ async def handle_auto_chat(bot: Bot, event: GroupMessageEvent):
     async with state.lock:
         state.event = event
         state.bot = bot
-        state.messages_chunk.append(MMessage(time=datetime.now(), user_name=nickname, user_id=user_id, content=message_content))
+        state.messages_chunk.append(MMessage(time=datetime.now(), user_name=nickname, user_id=user_id, content=message_content, is_at_only=is_at_only))
         state.last_message_time = asyncio.get_event_loop().time()
     # 自动更新 QQ 昵称
     try:
@@ -288,13 +295,17 @@ async def _extract_text(message_content, bot: Bot, group_id: int) -> str:
         return "（无法获取）"
 
 
-async def message2MMessage(bot_name: str, group_id: int, message: Message, bot: Bot, state: GroupState) -> str:
+async def message2MMessage(bot_name: str, group_id: int, message: Message, bot: Bot, state: GroupState) -> tuple[str, bool]:
     content = ""
+    has_non_at_content = False
     logger.debug(f"[消息解析] 开始解析消息，共 {len(list(message))} 个 segment")
     for seg in message:
         logger.debug(f"[消息解析] segment type={seg.type}")
         if seg.type == "text":
-            content += seg.data.get("text", "")
+            text = seg.data.get("text", "")
+            content += text
+            if text.strip():
+                has_non_at_content = True
         elif seg.type in ("image", "emoji"):
             try:
                 url = seg.data.get("url", "")
@@ -322,6 +333,7 @@ async def message2MMessage(bot_name: str, group_id: int, message: Message, bot: 
                 if plugin_config.aigf_image_mode == "llm":
                     cache_id = await meme_manager.save_to_cache(image_bytes=image_bytes, description="", emotion="")
                     logger.debug(f"[缓存] LLM模式 - 图片已缓存, cache_id={cache_id}")
+                    content += f"\n[发送了一张图片, id: {cache_id}]\n"
                 else:
                     desc = await image_manager.get_image_description(image_base64=image_base64, is_sticker=is_sticker)
                     logger.info(f"[VLM] 描述: {desc.description if desc else None}")
@@ -330,12 +342,13 @@ async def message2MMessage(bot_name: str, group_id: int, message: Message, bot: 
                             image_bytes=image_bytes, description=desc.description, emotion=desc.emotion,
                         )
                         if is_sticker:
-                            content += f"\n[表情包] [情感:{desc.emotion}] [内容:{desc.description}]\n"
+                            content += f"\n[发送了一张可能是表情包的图片, id: {cache_id}] [情感:{desc.emotion}] [内容:{desc.description}]\n"
                         else:
-                            content += f"\n[图片] {desc.description}\n"
+                            content += f"\n[发送了一张图片, id: {cache_id}] [内容:{desc.description}]\n"
             except Exception as e:
                 logger.error(f"图片处理错误: {e}")
                 content += "\n[图片加载失败]\n"
+            has_non_at_content = True
         elif seg.type == "at":
             uid = seg.data.get("qq")
             if not uid:
@@ -349,6 +362,7 @@ async def message2MMessage(bot_name: str, group_id: int, message: Message, bot: 
                 except Exception:
                     content += f" @{uid} "
         elif seg.type == "reply":
+            has_non_at_content = True
             try:
                 reply_msg_id = seg.data.get("message_id")
                 if reply_msg_id:
@@ -359,7 +373,7 @@ async def message2MMessage(bot_name: str, group_id: int, message: Message, bot: 
                         content += f"[回复 {replied_sender} 的消息: \"{replied_text}\"] "
             except Exception:
                 pass
-    return content.strip()
+    return content.strip(), not has_non_at_content
 
 
 # ---- 启动 ----
@@ -369,6 +383,10 @@ from nonebot import get_driver
 @get_driver().on_startup
 async def _():
     logger.success(f"[启动] 图片理解模式: {plugin_config.aigf_image_mode}")
+    if plugin_config.aigf_search_enabled:
+        logger.success(f"[启动] 联网搜索: 已启用 | 模式: {plugin_config.aigf_search_mode} | API: {plugin_config.aigf_search_api}")
+    else:
+        logger.info("[启动] 联网搜索: 未启用")
     await load_presets()
     await meme_manager.load_all()
     # 加载默认预设到所有群
